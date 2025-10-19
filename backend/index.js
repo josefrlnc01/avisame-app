@@ -20,7 +20,7 @@ const port = 3000;
 
 // Enable CORS for all routes
 app.use((req, res, next) => {
-  const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173'];
+  const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173','https://avisame-app.vercel.app'];
   const origin = req.headers.origin;
   
   if (allowedOrigins.includes(origin)) {

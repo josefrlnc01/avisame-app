@@ -8,7 +8,7 @@ export function ThemeProvider({ children }) {
     const [articles, setArticles] = useState([]);
     const [lastUpdate, setLastUpdate] = useState(new Date());
     
-    const API_BASE_URL = 'http://localhost:3000';
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
     
     // Función para obtener los artículos
     const fetchArticles = async () => {
