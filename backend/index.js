@@ -1,58 +1,86 @@
-import express from 'express';
-import cors from 'cors';
-import bodyParser from 'body-parser';
+import dotenv from 'dotenv'
+dotenv.config()
 import Parser from 'rss-parser';
 import { pipeline } from '@xenova/transformers';
-import { Low } from 'lowdb';
-import { JSONFile } from 'lowdb/node';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import jwt from 'jsonwebtoken'
 import cron from 'node-cron';
+import { db } from './config/db.js';
+import { createTables } from './config/db.js';
+import 'dotenv/config'
+import { createServer } from "http";
+import express from 'express'
+import bodyParser from "body-parser";
+import cors from 'cors';
+import router from "./router.js";
+import { clients } from './handlers/articles.js';
+import cookieParser from 'cookie-parser';
+export const app = express();
+export const server = createServer(app)
+export const port = 3000;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
-// Almacenar los temas a monitorear
-let topicsToMonitor = new Set();
 
-const app = express();
-const port = 3000;
+// Configure CORS
+export const corsOptions = {
+  origin: ['http://localhost:5173',
+     'capacitor://localhost', // 👈 Para Capacitor iOS
+      'http://localhost', // 👈 Para Capacitor Android
+      'ionic://localhost', // 👈 Para Ionic/Capacitor
+      'https://avisame-app-production.up.railway.app'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Set-Cookie'],
+  credentials: true
+};
 
-// Enable CORS for all routes
+// Middleware setup (order matters!)
+app.use(cookieParser())
+
+app.use(cors(corsOptions));
+app.use(express.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+
+// Routes should be last
+app.use(router);
+
+
+createTables()
+
+
+
+
+
+
+
 app.use((req, res, next) => {
-  const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173','https://avisame-app.vercel.app'];
-  const origin = req.headers.origin;
-  
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
+  const token = req.cookies.accessToken;
+  if (token){
+    try {
+      jwt.verify(token, process.env.VITE_ACCESS_TOKEN)
+    } catch (error) {
+      console.error(error)
+      res.clearCookie('accessToken', {
+        httpOnly : true,
+        secure : false,
+        sameSite : 'lax'
+      })
+      res.clearCookie('refreshToken', {
+        httpOnly : true,
+        secure : false,
+        sameSite : 'lax'
+      })
+    }
   }
-  res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  // Handle preflight
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  
-  next();
-});
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Something broke!');
-});
-app.use(bodyParser.json())
-// Add a test route
-app.get('/test', (req, res) => {
-  res.json({ message: 'API is working!' });
-});
-// Database setup
-const file = path.join(__dirname, 'db.json');
-const adapter = new JSONFile(file);
-const db = new Low(adapter, { interests: [], sent: [] });
+  next()
+})
+
+
+
 
 // Initialize parser
-const parser = new Parser();
+export const parser = new Parser();
 let embedder;
 
 
@@ -60,134 +88,215 @@ let embedder;
 (async () => {
   try {
     embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-    console.log('Modelo cargado ✅');
+   
   } catch (error) {
     console.error('Error loading model:', error);
   }
 })();
 
-async function initializeDb(){
-  await db.read();
-  db.data = db.data || { interests: [], sent: [] };
-}
 
-initializeDb().catch(console.error);
 
-async function fetchTopic(topic) {
-  await db.read();
-  if (!db.data.sent) db.data.sent = [];
+
+export async function fetchTopic(topic, userId) {
 
   const feedUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(topic)}&hl=es&gl=ES&ceid=ES:es`;
   const feed = await parser.parseURL(feedUrl);
 
-  console.log(`\n🔍 Buscando artículos sobre: ${topic}`);
   const results = []
-  for (let item of feed.items) {
+  for (let item of feed.items.slice(0,10)) {
+
+    const creationDate = item.pubDate
     const title = item.title;
     const link = item.link;
+    
+    
 
-    // Evitar duplicados
-    if (db.data.sent.includes(link)) break;
+    const article = {
 
-    // Embeddings del título y del tema
-    const [titleEmb, topicEmb] = await Promise.all([
-      embedder(title),
-      embedder(topic)
-    ]);
-
-    const titleVec = Array.from(titleEmb.data);
-    const topicVec = Array.from(topicEmb.data);
-    const sim = cosineSimilarity(titleVec, topicVec);
-
-      const article = {title, link, topic}
-      db.data.sent.push(article); 
-      results.push(article)
-      
-      
-  }
-  console.log(`Búsqueda completada para "${topic}".`);
-  await db.write();
-  return results.slice(0, 10)
-  
-}
-
-function cosineSimilarity(a, b) {
-  const dot = a.reduce((sum, val, i) => sum + val * b[i], 0);
-  const magA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
-  const magB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
-  return dot / (magA * magB);
-}
-
-// Clear all articles (using POST for better CORS compatibility)
-app.post('/api/clear', async (req, res) => {
-  try {
-    console.log('Clearing articles...');
-    await db.read();
-    db.data.sent = [];
-    await db.write();
-    res.json({ success: true, message: 'All articles cleared' });
-  } catch (error) {
-    console.error('Error clearing articles:', error);
-    res.status(500).json({ success: false, message: 'Failed to clear articles' });
-  }
-});
-
-// API Endpoint para agregar un nuevo tema
-app.post('/api', async (req, res) => {
-  try {
-    const { theme } = req.body;
-    if (!theme) {
-      return res.status(400).json({ error: 'Theme is required' });
+      title,
+      link,
+      topic,
+      creationDate,
+      user_id : userId
     }
-    
-    console.log(`Processing topic: ${theme}`);
-    const results = await fetchTopic(theme);
-    
-    // Agregar el tema a la lista de monitoreo
-    topicsToMonitor.add(theme.trim().toLowerCase());
-    
-    res.json(results);
-  } catch (error) {
-    console.error('Error processing request:', error);
-    res.status(500).json({ error: 'Failed to process request' });
+
+    db.prepare(`
+        INSERT OR IGNORE INTO articles(title, link, topic, creationDate, user_id) VALUES (?,?,?,?,?)
+        `).run(
+      article.title,
+      article.link,
+      article.topic,
+      article.creationDate,
+      article.user_id
+    )
+
+    db.prepare(`
+      DELETE FROM articles
+      WHERE id NOT IN (
+        SELECT id FROM articles
+        WHERE user_id = ?
+        ORDER BY dateTime(creationDate) DESC
+        LIMIT 150
+      )
+        AND user_id = ?
+      `).run(userId, userId)
+
+    results.push(article)
+
+
   }
+
+
+  return results
+
+}
+
+
+
+
+
+
+
+let sseClients = [];
+// 📡 SSE Endpoint - Los clientes se conectan aquí
+app.get('/api/events', (req, res) => {
+  // Configurar headers para SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  // Agregar cliente a la lista
+  const clientId = Date.now();
+  const newClient = {
+    id: clientId,
+    res
+  };
+
+  sseClients.push(newClient);
+  
+
+  // Enviar mensaje de conexión exitosa
+  res.write(`event: connected\n`);
+  res.write(`data: ${JSON.stringify({ clientId, timestamp: new Date().toISOString() })}\n\n`);
+
+  // Eliminar cliente cuando se desconecta
+  req.on('close', () => {
+    sseClients = sseClients.filter(client => client.id !== clientId);
+  });
 });
 
-// Get articles endpoint
-app.get('/api', async (req, res) => {
-  try{
-    console.log('GET /api llamado');
-    await db.read();
-    console.log('DB leída:', db.data);
-    res.json(db.data?.sent || []);
-  }catch(error){
-    console.error('Error fetching articles:', error);
-    res.status(500).json({ error: 'Internal server error' });
+
+
+app.post('/api/generate-recipe', async (req, res) => {
+  try {
+    const { prompt } = req.body
+    
+    const result = await streamText({
+      model: 'meituan/longcat-flash-chat:free',
+      messages: [{ role: 'user', content: prompt }],
+      system: 'Eres experto en noticias y siempre tienes la última actualidad de noticias a mano',
+      apiKey: process.env.VITE_KEYAI // Secure, server-side only
+    })
+    
+    // Stream the response
+    result.pipeTextStreamToResponse(res)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
   }
-});
+})
+
+
+app.post('/api/refresh', async  (req, res) => {
+  const refreshToken = req.cookies?.refreshToken;
+  if(!refreshToken){
+    return res.status(401).json({error : 'No hay token'})
+  }
+
+  const storedToken = db.prepare(`
+    SELECT * FROM users WHERE refresh_token = ?
+    `).get(refreshToken);
+
+      if (!storedToken) return res.status(403).json({ error: 'Token no válido' })
+ 
+    const decoded = jwt.verify(refreshToken, process.env.VITE_REFRESH_TOKEN)
+    const newAccesToken = jwt.sign(
+      {id : decoded.id , email : decoded.email},
+      process.env.VITE_ACCESS_TOKEN,
+      {expiresIn : '15m'}
+    )
+
+    if (newAccesToken){
+      res
+      .cookie('accessToken', newAccesToken, {
+        httpOnly : true,
+        secure : false,
+        sameSite : 'lax',
+        maxAge : 15 * 60 * 1000
+      })
+      .json({succes : true, message: 'New token has send'})
+    }
+
+  
+})
+
+
+app.post('/api/logout', async (req, res) => {
+    res
+    .clearCookie('accessToken')
+    .clearCookie('refreshToken')
+    .json({succes : true, message : 'Sesión cerrada'})
+})
+
+
+
+
+
 
 // Tarea programada para verificar noticias cada hora
-async function checkForNewArticles() {
-  console.log('Checking for new articles...');
+async function checkForNewArticlesAndNotify() {
+  
   try {
-    for (const topic of topicsToMonitor) {
-      console.log(`Checking topic: ${topic}`);
-      await fetchTopic(topic);
+
+    const topics = db.prepare(`SELECT DISTINCT interest, user_id FROM interests`).all()
+    for (const row of topics) {
+      const topic = row.interest;
+      const userId = row.user_id;
+      const newArticles = await fetchTopic(topic, userId);
+      if (newArticles.length) {
+        notifyClients({ type: 'new-article', topic: topic, articles: newArticles })
+      }
     }
-    console.log('Finished checking for new articles');
+    
   } catch (error) {
     console.error('Error in scheduled article check:', error);
   }
 }
 
+
+
+
+
+function notifyClients(data) {
+  for (const client of clients) {
+    client.res.write(`data : ${JSON.stringify(data)}\n\n`);
+  }
+}
+
+
 // Programar la verificación cada hora
-cron.schedule('0 * * * *', checkForNewArticles);
-console.log('Scheduled task set to check for new articles every hour');
+cron.schedule('0 * * * *', async () => {
+  try {
+    await checkForNewArticlesAndNotify();
+  } catch (error) {
+    console.error('Cron job error:', error);
+  }
+});
+
 
 // Iniciar el servidor
-app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
+server.listen(port, () => {
   
+
   // Verificar noticias al iniciar
-  checkForNewArticles().catch(console.error);
+  checkForNewArticlesAndNotify().catch(console.error);
 });
