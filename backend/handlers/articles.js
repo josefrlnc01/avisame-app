@@ -1,6 +1,6 @@
 import { query } from 'express-validator';
 import jwt from 'jsonwebtoken'
-import { pool } from '../config/db.js';
+
 import Parser from 'rss-parser';
 export const clients = new Set();
 
@@ -40,7 +40,7 @@ export const getArticlesByRadar = async (req, res) => {
   }
 
   const userId = decoded.id;
-
+  const pool = connectToDB()
   
 
   if (!Array.isArray(themesArray) || themesArray.length === 0) {

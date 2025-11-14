@@ -3,18 +3,22 @@ dotenv.config()
 import pkg from 'pg'
 
 const {Pool} = pkg
+let pool;
+  export function connectToDB(){
+        pool = new Pool({
+        connectionString : process.env.DATABASE_URL,
+        ssl: {rejectUnauthorized : false}
+      })
+      return pool
+  }
 
-export const pool = new Pool({
-  connectionString : process.env.DATABASE_URL,
-  ssl: {rejectUnauthorized : false}
-})
 
 console.log('DATABASE_URL',process.env.DATABASE_URL)
 
 
 export const createDatabase = async () => {
   try{
-    
+    const pool = connectToDB()
     await pool.query(`CREATE DATABASE inforadar;`)
 
     await pool.query(`CREATE TABLE IF NOT EXISTS users(

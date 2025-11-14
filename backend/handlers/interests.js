@@ -1,28 +1,29 @@
 
 import { pipeline } from '@xenova/transformers';
-import { pool } from '../config/db.js';
+
 
 
 export const addInterest = async (req, res) => {
     try {
-        const { theme } = req.body;
-    const user = req.user;
-    if (!theme || typeof theme !== 'string' || !theme.trim()) {
-      return res.status(400).json({ error: 'Theme is required and must be a non-empty string' });
-    }
+      const pool = connectToDB()
+      const { theme } = req.body;
+      const user = req.user;
+      if (!theme || typeof theme !== 'string' || !theme.trim()) {
+        return res.status(400).json({ error: 'Theme is required and must be a non-empty string' });
+      }
 
-    if(!user){
-      return res.status(400).json({error : 'Error al obtener usuario'})
-    }
+      if(!user){
+        return res.status(400).json({error : 'Error al obtener usuario'})
+      }
 
-    await pool.query(`INSERT INTO interests (user_id, interest) VALUES ($1, $2)`,[user.id, theme.trim()])
-    // Immediately fetch articles for the new theme
-    
-    res.status(201).json({
-      success: true,
-      message: `Successfully added theme: ${theme}`
+      await pool.query(`INSERT INTO interests (user_id, interest) VALUES ($1, $2)`,[user.id, theme.trim()])
+      // Immediately fetch articles for the new theme
       
-    });
+      res.status(201).json({
+        success: true,
+        message: `Successfully added theme: ${theme}`
+        
+      });
     } catch (error) {
         console.error('Error in /api/interests:', error);
         res.status(500).json({
@@ -76,6 +77,7 @@ export const deleteInterest = async (req, res) => {
 
 export const getInterests = async (req, res) => {
     try{
+      const pool = connectToDB()
         const user = req.user;
         console.log('User Id', user.id)
         const temas = await pool.query(`
@@ -100,6 +102,7 @@ export const getInterests = async (req, res) => {
 
 export const filterByInterest = async (req, res) => {
   try{
+    const pool = connectToDB()
       const {theme} = req.query;
       const user = req.user;
       const filteredArticles = await pool.query(`

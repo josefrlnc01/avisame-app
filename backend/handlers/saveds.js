@@ -1,8 +1,9 @@
-import { pool } from "../config/db.js";
+
 
 
 export const saveArticle = async (req, res) => {
      try {
+      const pool = connectToDB()
         const { article } = req.body;
         const user = req.user;
         console.log(article)
@@ -32,7 +33,8 @@ export const saveArticle = async (req, res) => {
 
 export const getSaveds = async (req, res) => {
       try{
-         const user = req.user;
+        const pool = connectToDB()
+        const user = req.user;
       
       const articlesSaveds = await pool.query(`SELECT * FROM articlesSaveds
     WHERE user_id = $1`, [user.id])
@@ -52,6 +54,7 @@ export const getSaveds = async (req, res) => {
 
 export const deleteSaved = async (req, res) => {
      try{
+      const pool = connectToDB()
         const {articleId} = req.query;
         console.log('articulo', articleId)
     

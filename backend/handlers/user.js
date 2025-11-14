@@ -1,10 +1,10 @@
 
 import jwt from 'jsonwebtoken'
 import 'dotenv/config'
-import { pool } from '../config/db.js';
+
 export const createUser = async (req, res) => {
     const { userData } = req.body;
-     
+    const pool = connectToDB()
       if (!userData || !userData.email) {
         return res.status(400).json({
           success: false,
@@ -111,6 +111,7 @@ export const createUser = async (req, res) => {
 
 export const getUser = async (req, res) => {
     try{
+      const pool = connectToDB()
         const userId = req.user.id;
       const user = await pool.query(`
         SELECT email, name

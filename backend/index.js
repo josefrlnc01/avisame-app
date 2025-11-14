@@ -4,7 +4,7 @@ import Parser from 'rss-parser';
 import { pipeline } from '@xenova/transformers';
 import jwt from 'jsonwebtoken'
 import cron from 'node-cron';
-import { createDatabase, pool } from './config/db.js';
+import { createDatabase, connectToDB } from './config/db.js';
 
 import 'dotenv/config'
 import { createServer } from "http";
@@ -98,7 +98,7 @@ let embedder;
 
 
 export async function fetchTopic(topic, userId) {
-
+  const pool = connectToDB()
   const feedUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(topic)}&hl=es&gl=ES&ceid=ES:es`;
   const feed = await parser.parseURL(feedUrl);
 
@@ -205,6 +205,7 @@ app.post('/api/generate-recipe', async (req, res) => {
 
 
 app.post('/api/refresh', async  (req, res) => {
+  const pool = connectToDB()
   const refreshToken = req.cookies?.refreshToken;
   if(!refreshToken){
     return res.status(401).json({error : 'No hay token'})
@@ -254,7 +255,7 @@ app.post('/api/logout', async (req, res) => {
 async function checkForNewArticlesAndNotify() {
   
   try {
-
+    const pool = connectToDB()
     const topics = await pool.query(`SELECT DISTINCT interest, user_id FROM interests`)
     for (const row of topics) {
       const topic = row.interest;
