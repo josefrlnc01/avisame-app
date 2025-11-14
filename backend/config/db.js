@@ -5,10 +5,13 @@ import pkg from 'pg'
 const {Pool} = pkg
 let pool;
   export function connectToDB(){
-        pool = new Pool({
+    if(!pool){
+       pool = new Pool({
         connectionString : process.env.DATABASE_URL,
         ssl: {rejectUnauthorized : false}
-      })
+      });
+      pool.connect()
+    }
       return pool
   }
 
