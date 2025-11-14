@@ -10,13 +10,13 @@ let pool;
         connectionString : process.env.DATABASE_URL,
         ssl: {rejectUnauthorized : false}
       });
-      pool.connect()
+
     }
       return pool
   }
 
 
-console.log('DATABASE_URL',process.env.DATABASE_URL)
+
 
 
 export const createDatabase = async () => {
