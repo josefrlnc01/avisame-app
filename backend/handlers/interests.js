@@ -1,5 +1,6 @@
-import { db } from "../config/db.js";
+
 import { pipeline } from '@xenova/transformers';
+import { pool } from '../config/db.js';
 
 
 export const addInterest = async (req, res) => {
@@ -14,7 +15,7 @@ export const addInterest = async (req, res) => {
       return res.status(400).json({error : 'Error al obtener usuario'})
     }
 
-    db.prepare(`INSERT INTO interests (user_id, interest) VALUES (?, ?)`).run(user.id, theme.trim())
+    await pool.query(`INSERT INTO interests (user_id, interest) VALUES ($1, $2)`,[user.id, theme.trim()])
     // Immediately fetch articles for the new theme
     
     res.status(201).json({
@@ -59,10 +60,10 @@ export const deleteInterest = async (req, res) => {
     try {
         const { interestId } = req.body;
 
-        db.prepare(`
+        await pool.query(`
           DELETE FROM interests
-          WHERE interest_id = ?
-          `).run(interestId)
+          WHERE interest_id = $1
+          `,[interestId])
           
         return res.json({ success: true, message: 'Interes eliminado correctamente' })
     }
@@ -77,11 +78,11 @@ export const getInterests = async (req, res) => {
     try{
         const user = req.user;
         console.log('User Id', user.id)
-        const temas = db.prepare(`
+        const temas = await pool.query(`
           SELECT DISTINCT interest, interest_id
           FROM interests
-          WHERE user_id = ?
-          `).all(user.id)
+          WHERE user_id = $1
+          `,[user.id])
           
     
           
@@ -101,11 +102,11 @@ export const filterByInterest = async (req, res) => {
   try{
       const {theme} = req.query;
       const user = req.user;
-      const filteredArticles = db.prepare(`
+      const filteredArticles = await pool.query(`
         SELECT * FROM articles 
-        WHERE user_id = ?
-        AND topic = ?
-        `).all(user.id, theme)
+        WHERE user_id = $1
+        AND topic = $2
+        `, [user.id, theme])
         if(!filteredArticles) throw new Error ('No artículos coincidentes')
       res.json({succes : true, filteredArticles})
     } catch(error){

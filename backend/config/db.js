@@ -1,60 +1,66 @@
-import Database from 'better-sqlite3';
+import dotenv from 'dotenv'
+dotenv.config()
+import pkg from 'pg'
 
-export const db = new Database('inforadar.db', { verbose: console.log });
-// Enable foreign key support
-db.pragma('foreign_keys = ON');
+const {Pool} = pkg
 
-export const createTables = db.transaction(() => {
-  
+export const pool = new Pool({
+  connectionString : process.env.DATABASE_URL,
+  ssl: {rejectUnauthorized : false}
+})
 
-  // Recreate users table with refresh_token column
-  db.prepare(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+console.log('DATABASE_URL',process.env.DATABASE_URL)
+
+
+export const createDatabase = async () => {
+  try{
+    
+    await pool.query(`CREATE DATABASE inforadar;`)
+
+    await pool.query(`CREATE TABLE IF NOT EXISTS users(
+      id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
       refresh_token TEXT
-    )`).run();
-
-       
-    // Create interests table with foreign key
-     
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS interests  (
-        interest_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER ,
-        interest TEXT NOT NULL,
-        UNIQUE (user_id, interest),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      )`).run();
-
-    // Create articles table with foreign key
- 
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS articles  (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-    title TEXT NOT NULL UNIQUE,
-    link TEXT NOT NULL,
-    topic TEXT NOT NULL,
-    
-    creationDate ,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`
     )
-  `).run();
-      
+
+    await pool.query(`CREATE TABLE IF NOT EXISTS interests(
+      interest_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      interest TEXT NOT NULL,
+      UNIQUE(user_id, interest),
+      )`
     
-    db.prepare(`
-  CREATE TABLE IF NOT EXISTS articlesSaveds (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    link TEXT NOT NULL,
-    topic TEXT,
-    creationDate TEXT,
-    user_id INTEGER,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  )
-`).run();
-  })
+    )
+
+    await pool.query(`CREATE TABLE IF NOT EXISTS articles(
+      id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      link TEXT,
+      topic TEXT NOT NULL,
+      creationDate TIMESTAMP
+      )`
+    )
+
+
+      await pool.query(`CREATE TABLE IF NOT EXISTS articlesSaveds(
+        id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      link TEXT,
+      topic TEXT NOT NULL,
+      creationDate TIMESTAMP
+        )`
+      )
+    console.log('base de datos creada correctamente')
+  } catch (error){
+    console.error(error)
+  }
+}
+
+
+
 
 

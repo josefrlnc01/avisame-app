@@ -1,11 +1,11 @@
-import dotenv from 'dotenv'
-dotenv.config()
+import dotenv from 'dotenv';
+dotenv.config({ path: '../.env' });  // Ruta relativa desde index.js
 import Parser from 'rss-parser';
 import { pipeline } from '@xenova/transformers';
 import jwt from 'jsonwebtoken'
 import cron from 'node-cron';
-import { db } from './config/db.js';
-import { createTables } from './config/db.js';
+import { createDatabase, pool } from './config/db.js';
+
 import 'dotenv/config'
 import { createServer } from "http";
 import express from 'express'
@@ -22,14 +22,14 @@ export const port = 3000;
 
 // Configure CORS
 export const corsOptions = {
-  origin: ['http://localhost:5173',
+  origin: [
      'capacitor://localhost', // 👈 Para Capacitor iOS
       'http://localhost', // 👈 Para Capacitor Android
       'ionic://localhost', // 👈 Para Ionic/Capacitor
       'https://avisame-app-production.up.railway.app'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
   exposedHeaders: ['Set-Cookie'],
   credentials: true
 };
@@ -45,8 +45,8 @@ app.use(bodyParser.json());
 // Routes should be last
 app.use(router);
 
+createDatabase()
 
-createTables()
 
 
 
@@ -120,26 +120,24 @@ export async function fetchTopic(topic, userId) {
       user_id : userId
     }
 
-    db.prepare(`
-        INSERT OR IGNORE INTO articles(title, link, topic, creationDate, user_id) VALUES (?,?,?,?,?)
-        `).run(
-      article.title,
+    await pool.query(`
+        INSERT OR IGNORE INTO articles(title, link, topic, creationDate, user_id) VALUES ($1,$2,$3,$4,$5)
+        `, [article.title,
       article.link,
       article.topic,
       article.creationDate,
-      article.user_id
-    )
+      article.user_id])
 
-    db.prepare(`
+    await pool.query(`
       DELETE FROM articles
       WHERE id NOT IN (
         SELECT id FROM articles
-        WHERE user_id = ?
+        WHERE user_id = $1
         ORDER BY dateTime(creationDate) DESC
         LIMIT 150
       )
-        AND user_id = ?
-      `).run(userId, userId)
+        AND user_id = $2
+      `, [userId, userId])
 
     results.push(article)
 
@@ -212,9 +210,9 @@ app.post('/api/refresh', async  (req, res) => {
     return res.status(401).json({error : 'No hay token'})
   }
 
-  const storedToken = db.prepare(`
-    SELECT * FROM users WHERE refresh_token = ?
-    `).get(refreshToken);
+  const storedToken = await pool.query(`
+    SELECT * FROM users WHERE refresh_token = $1
+    `,[refreshToken])
 
       if (!storedToken) return res.status(403).json({ error: 'Token no válido' })
  
@@ -257,7 +255,7 @@ async function checkForNewArticlesAndNotify() {
   
   try {
 
-    const topics = db.prepare(`SELECT DISTINCT interest, user_id FROM interests`).all()
+    const topics = await pool.query(`SELECT DISTINCT interest, user_id FROM interests`)
     for (const row of topics) {
       const topic = row.interest;
       const userId = row.user_id;

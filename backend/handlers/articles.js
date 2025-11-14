@@ -1,5 +1,6 @@
+import { query } from 'express-validator';
 import jwt from 'jsonwebtoken'
-import { db } from '../config/db.js';
+import { pool } from '../config/db.js';
 import Parser from 'rss-parser';
 export const clients = new Set();
 
@@ -46,19 +47,19 @@ export const getArticlesByRadar = async (req, res) => {
     res.write(`data: ${JSON.stringify({ type: 'initial', articles: [] })}\n\n`);
   } else {
     const mappedArray = themesArray.map(() => '?').join(',');
-    const existingArticles = db.prepare(`
+    const existingArticles = await pool.query(`
       SELECT * FROM articles
-      WHERE user_id = ? 
-      AND topic IN (${mappedArray})
-      ORDER BY dateTime(creationDate) DESC
+      WHERE user_id = $1 
+      AND topic = ANY($2)
+      ORDER BY creationDate DESC
       LIMIT 75
-    `).all(userId, ...themesArray);
+    `,[userId, themesArray])
 
-    db.prepare(`
+    await pool.query(`
       DELETE FROM articles
-      WHERE topic NOT IN (${mappedArray})
-      AND user_id = ?
-    `).run(...themesArray, userId);
+      WHERE topic != ALL($1)
+      AND user_id = $2
+    `,[themesArray, userId]);
 
     res.write(`data: ${JSON.stringify({ type: 'initial', articles: existingArticles })}\n\n`);
   }

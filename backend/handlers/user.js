@@ -1,6 +1,7 @@
-import { db } from "../config/db.js";
+
 import jwt from 'jsonwebtoken'
 import 'dotenv/config'
+import { pool } from '../config/db.js';
 export const createUser = async (req, res) => {
     const { userData } = req.body;
      
@@ -15,7 +16,7 @@ export const createUser = async (req, res) => {
         let user;
         
         // Buscar usuario existente
-        const existingUser = db.prepare('SELECT * FROM users WHERE email = ?').get(userData.email);
+        const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [userData.email])
         console.log('Usuario existente:', existingUser);
         
         if (existingUser) {
@@ -24,15 +25,12 @@ export const createUser = async (req, res) => {
         } else {
           // Crear nuevo usuario
           console.log('🆕 Creando nuevo usuario para:', userData.email);
-          const newUser = db.prepare(`
+          const newUser = await pool.query(`
             INSERT INTO users (email, name)
-            VALUES (?, ?)
-          `).run(
-            userData.email,
-            userData.name || userData.email.split('@')[0] // Usar la parte antes del @ como nombre si no se proporciona
-          );
+            VALUES ($1, $2)
+          `, [userData.email, userData.name] || userData.email.split('@')[0])
           
-          user = db.prepare('SELECT * FROM users WHERE id = ?').get(newUser.lastInsertRowid);
+          user = await pool.query('SELECT * FROM users WHERE id = ?', [newUser.lastInsertRowid])
           console.log('✅ Nuevo usuario creado:', { id: user.id, email: user.email });
         }
         
@@ -47,8 +45,7 @@ export const createUser = async (req, res) => {
         );
     
         // Store refresh token in the database
-        db.prepare('UPDATE users SET refresh_token = ? WHERE id = ?').run(refreshToken, user.id);
-    
+        await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2',[refreshToken, user.id])
         // Generate access token
         const accessToken = jwt.sign(
           { 
@@ -115,11 +112,11 @@ export const createUser = async (req, res) => {
 export const getUser = async (req, res) => {
     try{
         const userId = req.user.id;
-      const user = db.prepare(`
+      const user = await pool.query(`
         SELECT email, name
         FROM users
-        WHERE id = ?
-        `).get(userId)
+        WHERE id = $1
+        `,[userId])
     
           if (!user) {
           return res.status(404).json({ 

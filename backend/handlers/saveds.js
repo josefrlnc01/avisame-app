@@ -1,4 +1,5 @@
-import  {db}  from "../config/db.js";
+import { pool } from "../config/db.js";
+
 
 export const saveArticle = async (req, res) => {
      try {
@@ -12,18 +13,9 @@ export const saveArticle = async (req, res) => {
           });
         }
         console.log('👤 User:', user.id);
-        db.prepare(`
-          INSERT INTO articlesSaveds ( title, link, topic,  creationDate, user_id)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(
-          
-          article.title,
-          article.link,
-          article.topic,
-          article.creationDate,
-          user.id
-        );
-    
+        await pool.query(`
+          INSERT INTO articlesSaveds (title, link, topic,  creationDate, user_id)
+          VALUES ($1, $2, $3, $4, $5)`, [article.title, article.link, article.topic, article.creationDate, user.id])
         res.json({
           success: true,
           article: article
@@ -42,8 +34,8 @@ export const getSaveds = async (req, res) => {
       try{
          const user = req.user;
       
-      const articlesSaveds = db.prepare(`SELECT * FROM articlesSaveds
-    WHERE user_id = ?`).all(user.id)
+      const articlesSaveds = await pool.query(`SELECT * FROM articlesSaveds
+    WHERE user_id = $1`, [user.id])
     
         res.json({
           success : true,
@@ -63,10 +55,10 @@ export const deleteSaved = async (req, res) => {
         const {articleId} = req.query;
         console.log('articulo', articleId)
     
-         db.prepare(`
+         await pool.query(`
           DELETE FROM articlesSaveds
-          WHERE id = ?
-          `).run(articleId)
+          WHERE id = $1
+          `,[articleId])
            res.json({
           success : true,
           articleId: articleId 
