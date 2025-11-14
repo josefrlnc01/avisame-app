@@ -4,10 +4,18 @@ import pkg from 'pg'
 
 const {Pool} = pkg
 let pool;
+
+const isProd = process.env.NODE_ENV === 'production'
+
+const connectionURL = isProd 
+? process.env.DATABASE_URL
+: process.env.LOCAL_DATABASE_URL 
+
+
   export function connectToDB(){
     if(!pool){
        pool = new Pool({
-        connectionString : process.env.DATABASE_URL,
+        connectionString : connectionURL,
         ssl: {rejectUnauthorized : false}
       });
 

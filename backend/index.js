@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
-dotenv.config({ path: '../.env' });  // Ruta relativa desde index.js
+const envFile = process.env.NODE_ENV === 'production' ? '.env' : '.env.local'
+dotenv.config({ path: envFile });  // Ruta relativa desde index.js
 import Parser from 'rss-parser';
 import { pipeline } from '@xenova/transformers';
 import jwt from 'jsonwebtoken'
